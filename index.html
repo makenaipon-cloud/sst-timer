@@ -43,6 +43,8 @@ header h1 small{font-family:var(--body);font-size:12px;color:var(--muted);font-w
 .bt button{padding:10px 14px;font-size:14px}
 .dev{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%}
 .dev button{min-width:200px}
+.alls{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;width:100%;font-size:12px}
+.bt button.link{background:none;border:0;padding:4px 0;color:var(--accent);text-decoration:underline;font-weight:600;font-size:12px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--line);display:inline-block;margin-right:6px}
 .dot.on{background:var(--ok)}
 .erg{display:flex;flex-direction:column;gap:10px;background:var(--panel);border-radius:12px;padding:10px 12px}
@@ -96,6 +98,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <div class="bt">
     <div class="dev"><button id="pmBtn" type="button">パワーメーターを接続</button><span><i class="dot" id="pmDot"></i><span id="pmName">未接続</span></span></div>
     <div class="dev"><button id="trBtn" type="button">スマートトレーナーを接続</button><span><i class="dot" id="trDot"></i><span id="trName">未接続</span></span></div>
+    <span class="alls">一覧に出ないとき：<button id="trAll" type="button" class="link">トレーナーを全機器から選ぶ</button><button id="pmAll" type="button" class="link">パワメを全機器から選ぶ</button></span>
     <button id="soundBtn" type="button">音テスト</button>
   </div>
   <div class="msg" id="btMsg" hidden></div>
@@ -196,6 +199,7 @@ function beep(freq=880,dur=0.15,when=0){
 const stepChime=()=>{beep(988,0.18);beep(1319,0.3,0.2);};
 $("soundBtn").onclick=()=>{unlockAudio();stepChime();};
 
+const U=n=>"0000"+n.toString(16).padStart(4,"0")+"-0000-1000-8000-00805f9b34fb";
 /* ---------- Bluetooth: power meter + smart trainer (separate links) ---------- */
 // Live power/cadence: power meter wins whenever it has sent data in the last 3 s; trainer is the fallback.
 const SRC={
@@ -297,12 +301,12 @@ $("ergPlus").onclick=()=>adjust(1);
 async function connectTrainer(device){
   const server=await device.gatt.connect();
   cp=null;hasControl=false;
-  const ftms=await server.getPrimaryService(0x1826);
-  const c=await ftms.getCharacteristic(0x2AD2);c.addEventListener("characteristicvaluechanged",onFTMS);await c.startNotifications();
+  const ftms=await server.getPrimaryService(U(0x1826));
+  const c=await ftms.getCharacteristic(U(0x2AD2));c.addEventListener("characteristicvaluechanged",onFTMS);await c.startNotifications();
   try{
-    cp=await ftms.getCharacteristic(0x2AD9);
+    cp=await ftms.getCharacteristic(U(0x2AD9));
     await cp.startNotifications();   // control point requires indications before writes
-    try{const rr=await (await ftms.getCharacteristic(0x2AD6)).readValue();resRange=[rr.getInt16(0,true),rr.getInt16(2,true)];if(resRange[1]<=resRange[0])resRange=null;}catch(e){resRange=null;}
+    try{const rr=await (await ftms.getCharacteristic(U(0x2AD6))).readValue();resRange=[rr.getInt16(0,true),rr.getInt16(2,true)];if(resRange[1]<=resRange[0])resRange=null;}catch(e){resRange=null;}
     if(mode!=="off"){await takeControl();await sendLoad(true);}
   }catch(e){cp=null;}
   renderLoad();
@@ -311,13 +315,13 @@ async function connectTrainer(device){
 async function connectPM(device){
   const server=await device.gatt.connect();
   SRC.pm.crankPrev=null;
-  const s=await server.getPrimaryService(0x1818);const c=await s.getCharacteristic(0x2A63);
+  const s=await server.getPrimaryService(U(0x1818));const c=await s.getCharacteristic(U(0x2A63));
   c.addEventListener("characteristicvaluechanged",onCPS);await c.startNotifications();
   return "";
 }
 const LINK={
-  pm:{btn:"pmBtn",dot:"pmDot",name:"pmName",title:"パワーメーター",service:0x1818,connect:connectPM},
-  tr:{btn:"trBtn",dot:"trDot",name:"trName",title:"スマートトレーナー",service:0x1826,connect:connectTrainer}
+  pm:{btn:"pmBtn",dot:"pmDot",name:"pmName",title:"パワーメーター",service:U(0x1818),connect:connectPM},
+  tr:{btn:"trBtn",dot:"trDot",name:"trName",title:"スマートトレーナー",service:U(0x1826),connect:connectTrainer}
 };
 function setLink(k,state,extra){
   const L=LINK[k],d=SRC[k].dev;
@@ -325,7 +329,7 @@ function setLink(k,state,extra){
   $(L.btn).textContent=state==="on"?`${L.title}を切断`:`${L.title}を接続`;
   $(L.name).textContent=state==="on"?`${d?.name||"接続済み"}${extra?"（"+extra+"）":""}`:state==="wait"?"接続中…":state==="retry"?"再接続中…":state==="lost"?"切断されました":"未接続";
 }
-async function linkDevice(k){
+async function linkDevice(k,showAll=false){
   unlockAudio();
   const L=LINK[k],S_=SRC[k];
   if(S_.dev&&S_.dev.gatt.connected){            // second tap = disconnect
@@ -335,7 +339,10 @@ async function linkDevice(k){
   }
   if(!navigator.bluetooth){btMsg("このブラウザはBluetooth接続に対応していません。PC・AndroidのChrome / Edge、iPhoneならBluefyアプリでダウンロード版のHTMLを開いてください。");return;}
   try{
-    const dev=await navigator.bluetooth.requestDevice({filters:k==="tr"?[{services:[0x1826]},{namePrefix:"GT"},{namePrefix:"GROWTAC"}]:[{services:[L.service]}],optionalServices:[0x1818,0x1826]});
+    const opt=[U(0x1818),U(0x1826)];
+    const req=showAll?{acceptAllDevices:true,optionalServices:opt}
+      :{filters:k==="tr"?[{services:[U(0x1826)]},{namePrefix:"GT"},{namePrefix:"GROWTAC"}]:[{services:[L.service]}],optionalServices:opt};
+    const dev=await navigator.bluetooth.requestDevice(req);
     if(SRC[k==="pm"?"tr":"pm"].dev?.id===dev.id){btMsg(`同じ機器が${k==="pm"?"トレーナー":"パワーメーター"}側で接続済みです。別の機器を選んでください。`);return;}
     S_.dev=dev;S_.manual=false;setLink(k,"wait");
     const extra=await L.connect(dev);
@@ -351,13 +358,17 @@ async function linkDevice(k){
     });
   }catch(e){
     S_.dev=null;setLink(k,"off");
-    if(e.name==="NotFoundError"&&/cancel/i.test(e.message))return;
-    if(e.name==="SecurityError"||/permission|policy|disallowed/i.test(e.message))btMsg("このページ内ではBluetoothが使えません。ダウンロード版のHTMLファイルをChromeで開くと接続できます。");
-    else btMsg(`${L.title}に接続できませんでした：${e.message}（Zwiftなど他のアプリと接続中だと使えないことがあります）`);
+    const em=(e&&(e.message||e.name))||String(e);
+    if(e&&e.name==="NotFoundError"&&/cancel/i.test(em))return;
+    if((e&&e.name==="NotFoundError")||/no devices? found|not found/i.test(em)){btMsg(`${L.title}が見つかりませんでした。GT-eRemoteなど他のアプリを完全に終了してから、「一覧に出ないとき」で全機器を表示して選んでください。`);return;}
+    if((e&&e.name==="SecurityError")||/permission|policy|disallowed/i.test(em))btMsg("このページ内ではBluetoothが使えません。ダウンロード版のHTMLファイルをChromeで開くと接続できます。");
+    else btMsg(`${L.title}に接続できませんでした：${em}（Zwiftなど他のアプリと接続中だと使えないことがあります）`);
   }
 }
 $("pmBtn").onclick=()=>linkDevice("pm");
 $("trBtn").onclick=()=>linkDevice("tr");
+$("trAll").onclick=()=>linkDevice("tr",true);
+$("pmAll").onclick=()=>linkDevice("pm",true);
 function avg(s){return s.samples.length?Math.round(s.samples.reduce((a,x)=>a+x[1],0)/s.samples.length):null;}
 function renderLive(){
   const now=performance.now();
