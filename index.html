@@ -335,7 +335,7 @@ async function linkDevice(k){
   }
   if(!navigator.bluetooth){btMsg("このブラウザはBluetooth接続に対応していません。PC・AndroidのChrome / Edge、iPhoneならBluefyアプリでダウンロード版のHTMLを開いてください。");return;}
   try{
-    const dev=await navigator.bluetooth.requestDevice({filters:[{services:[L.service]}],optionalServices:[0x1818,0x1826]});
+    const dev=await navigator.bluetooth.requestDevice({filters:k==="tr"?[{services:[0x1826]},{namePrefix:"GT"},{namePrefix:"GROWTAC"}]:[{services:[L.service]}],optionalServices:[0x1818,0x1826]});
     if(SRC[k==="pm"?"tr":"pm"].dev?.id===dev.id){btMsg(`同じ機器が${k==="pm"?"トレーナー":"パワーメーター"}側で接続済みです。別の機器を選んでください。`);return;}
     S_.dev=dev;S_.manual=false;setLink(k,"wait");
     const extra=await L.connect(dev);
