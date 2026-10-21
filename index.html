@@ -22,6 +22,27 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;fl
 .wname{font-family:var(--num);font-weight:800;font-size:26px;letter-spacing:.02em;line-height:1;overflow-wrap:anywhere}
 .wmeta{font-size:12px;color:var(--accent);font-weight:600}
 .picker{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column;padding:calc(12px + env(safe-area-inset-top,0px)) 16px calc(12px + env(safe-area-inset-bottom,0px));gap:10px;max-width:560px;margin:0 auto;box-sizing:border-box}
+.detail{position:absolute;inset:0;background:var(--bg);overflow-y:auto;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 0;display:flex;flex-direction:column;gap:14px;box-sizing:border-box}
+.dtback{align-self:flex-start;padding:8px 12px;font-size:13px}
+.detail h2{font-family:var(--num);font-weight:800;font-size:34px;line-height:1;margin:0;letter-spacing:.02em;overflow-wrap:anywhere;text-wrap:balance}
+.dtmeta{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.dtmeta b{font-family:var(--num);font-size:24px;color:var(--fg);font-weight:600;margin-right:3px}
+.dtprof{height:110px;display:flex;align-items:flex-end;background:var(--panel);border-radius:10px;padding:10px 10px 0}
+.dtprof i{display:block;flex-shrink:0}
+.dtsec h3{font-size:12px;letter-spacing:.12em;color:var(--muted);margin:0 0 8px;font-weight:600}
+.zbars{display:grid;gap:5px}
+.zrow{display:grid;grid-template-columns:118px 1fr 52px;align-items:center;gap:8px;font-size:12px;font-variant-numeric:tabular-nums}
+.zrow .zt{height:10px;border-radius:5px;background:var(--line);overflow:hidden}
+.zrow .zt i{display:block;height:100%}
+.zrow span:last-child{text-align:right;color:var(--muted)}
+.dtsum{margin:0;line-height:1.8;font-size:14px;max-width:65ch}
+.dtsteps{margin:0;padding-left:22px;display:grid;gap:4px;font-size:13px;font-variant-numeric:tabular-nums;line-height:1.5}
+.dtsteps li::marker{color:var(--muted)}
+.dtsteps .rep{color:var(--accent);font-weight:700}
+.dtlink{color:var(--accent);font-weight:600;font-size:14px}
+.dtgo{position:sticky;bottom:0;margin:0 -16px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,var(--bg) 70%,transparent)}
+.dtgo button{width:100%}
+.picker{position:fixed}
 .pkhead{display:flex;gap:8px}
 .pkhead input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:10px;padding:12px;font-size:16px;font-family:var(--body)}
 .pkhead button{padding:10px 14px;font-size:14px}
@@ -175,6 +196,26 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     </div>
     <div class="pkcount" id="pkCount"></div>
     <ul class="pklist" id="pkList"></ul>
+    <div class="detail" id="detail" hidden>
+      <button id="dtBack" type="button" class="dtback">← 一覧に戻る</button>
+      <h2 id="dtName"></h2>
+      <div class="dtmeta" id="dtMeta"></div>
+      <div class="dtprof" id="dtProf"></div>
+      <div class="dtsec">
+        <h3>強度の配分</h3>
+        <div class="zbars" id="dtZones"></div>
+      </div>
+      <div class="dtsec">
+        <h3>このワークアウトの中身</h3>
+        <p class="dtsum" id="dtSum"></p>
+      </div>
+      <div class="dtsec">
+        <h3>メニュー</h3>
+        <ol class="dtsteps" id="dtSteps"></ol>
+      </div>
+      <a class="dtlink" id="dtLink" href="#" target="_blank" rel="noopener">すくみずログの解説記事を読む ↗</a>
+      <div class="dtgo"><button id="dtGo" type="button" class="go">これをやる</button></div>
+    </div>
   </section>
 
   <details class="list">
@@ -518,16 +559,75 @@ function renderPicker(){
   $("pkList").querySelectorAll(".pkn").forEach((el,i)=>el.textContent=list[i].name);
 }
 $("pickBtn").onclick=()=>{$("picker").hidden=false;renderPicker();$("q").focus();};
-$("pkClose").onclick=()=>{$("picker").hidden=true;};
+$("pkClose").onclick=()=>{$("detail").hidden=true;$("picker").hidden=true;};
 $("q").oninput=renderPicker;
 $("pkFilter").onclick=e=>{const b=e.target.closest("button");if(!b)return;pkF=b.dataset.f;$("pkFilter").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));renderPicker();};
+let dtW=null;
+const ZN=[["リカバリー","--z1",0,60],["エンデュランス","--z2",60,76],["テンポ","--z3",76,90],["閾値（SST〜FTP）","--z4",90,105],["VO2max","--z5",105,119],["無酸素・スプリント","--z6",119,999]];
+const stPct=st=>st[1]==null?null:(st[4]?[st[1]/ftp*100,st[2]/ftp*100]:[st[1],st[2]]);
+const fmtD=sec=>{const m=Math.floor(sec/60),s=sec%60;return m?(s?`${m}分${s}秒`:`${m}分`):`${s}秒`;};
+function stepText(st){
+  const pc=stPct(st); let t=fmtD(st[0])+" ";
+  if(!pc)t+="フリーライド";
+  else if(st[4])t+=st[1]===st[2]?`${st[1]}W`:`${st[1]}→${st[2]}W`;
+  else t+=st[1]===st[2]?`${st[1]}%（${W(st[1])}W）`:`${st[1]}→${st[2]}%（${W(st[1])}→${W(st[2])}W）`;
+  if(st[3])t+=` · ${st[3]}rpm`;
+  return t;
+}
+// collapse repeated sequences: [{n, items:[steps]}]
+function groupSteps(steps){
+  const key=st=>st.join(",");const out=[];let i=0;
+  while(i<steps.length){
+    let best={n:1,k:1};
+    for(let k=1;k<=4&&i+k<=steps.length;k++){
+      let n=1;while(i+(n+1)*k<=steps.length&&steps.slice(i+n*k,i+(n+1)*k).every((x,j)=>key(x)===key(steps[i+j])))n++;
+      if(n>1&&n*k>best.n*best.k)best={n,k};
+    }
+    out.push({n:best.n,items:steps.slice(i,i+best.k)});i+=best.n*best.k;
+  }
+  return out;
+}
+function summary(w){
+  const tot=w.steps.reduce((a,x)=>a+x[0],0),z=zoneSecs(w);
+  const hard=z[3]+z[4]+z[5];
+  const main=ZN.map((n,i)=>[n[0],z[i]]).filter((x,i)=>i>=2).sort((a,b)=>b[1]-a[1])[0];
+  const g=groupSteps(w.steps).filter(x=>x.n>1&&x.items.some(st=>{const p=stPct(st);return p&&Math.max(...p)>=90;}));
+  let s=`合計${Math.round(tot/60)}分のうち、閾値以上（FTPの90%〜）で踏むのは約${Math.round(hard/60)}分。`;
+  if(main&&main[1]>0)s+=`いちばん長いのは「${main[0]}」の約${Math.round(main[1]/60)}分です。`;
+  if(g.length){const x=g.sort((a,b)=>b.n*b.items.length-a.n*a.items.length)[0];s+=`中心になるのは「${x.items.map(stepText).join(" ＋ ")}」を${x.n}回繰り返すセット。`;}
+  const peak=Math.max(...w.steps.map(st=>{const p=stPct(st);return p?Math.max(...p):0;}));
+  if(peak>=119)s+=`最大で${Math.round(peak)}%（${W(peak)}W）の短い全力区間があります。`;
+  const cad=w.steps.filter(st=>st[3]);if(cad.length)s+=`ケイデンス指定のある区間が${cad.length}か所あります。`;
+  return s;
+}
+function zoneSecs(w){
+  const z=[0,0,0,0,0,0];
+  for(const st of w.steps){const p=stPct(st);const v=p?(p[0]+p[1])/2:0;const i=ZN.findIndex(n=>v>=n[2]&&v<n[3]);z[i<0?0:i]+=st[0];}
+  return z;
+}
+function openDetail(w){
+  dtW=w;
+  $("dtName").textContent=w.name;
+  $("dtMeta").innerHTML=`<span><b>${w.min}</b>分</span><span><b>${w.tss||"—"}</b>TSS</span><span><b>${w.steps.length}</b>ステップ</span>`;
+  $("dtProf").innerHTML=miniProfile(w);
+  const z=zoneSecs(w),tot=z.reduce((a,b)=>a+b,0);
+  $("dtZones").innerHTML=ZN.map((n,i)=>`<div class="zrow"><span>${n[0]}</span><span class="zt"><i style="width:${z[i]/tot*100}%;background:var(${n[1]})"></i></span><span>${z[i]?fmtD(Math.max(60,Math.round(z[i]/60)*60)):"—"}</span></div>`).join("");
+  $("dtSum").textContent=summary(w);
+  $("dtSteps").innerHTML=groupSteps(w.steps).map(g=>g.n>1?`<li><span class="rep">${g.n}回</span>　${g.items.map(stepText).join(" → ")}</li>`:`<li>${stepText(g.items[0])}</li>`).join("");
+  $("dtLink").href=w.url;
+  $("detail").hidden=false;$("detail").scrollTop=0;
+}
+$("dtBack").onclick=()=>{$("detail").hidden=true;};
 $("pkList").onclick=e=>{
   const b=e.target.closest("button[data-id]");if(!b)return;
-  const w=WORKOUTS.find(x=>x.id===b.dataset.id);if(!w)return;
+  const w=WORKOUTS.find(x=>x.id===b.dataset.id);if(w)openDetail(w);
+};
+$("dtGo").onclick=()=>{
+  const w=dtW;if(!w)return;
   if(running)stop();
   setWorkout(w);try{localStorage.setItem("wid",w.id);}catch(e){}
   elapsed=0;cur=-1;lapE=lapT=lapTgtE=0;prevLapW=prevLapTgt=null;$("doneMsg").hidden=true;$("toggle").textContent="スタート";
-  build();render();$("picker").hidden=true;
+  build();render();$("detail").hidden=true;$("picker").hidden=true;
 };
 {let wid=null;try{wid=localStorage.getItem("wid");}catch(e){}
  setWorkout(WORKOUTS.find(w=>w.id===wid)||WORKOUTS.find(w=>w.id==="sstmed")||WORKOUTS[0]);}
