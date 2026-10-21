@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}</style></head><body>
+<title>SST (Med) タイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Noto+Sans+JP:wght@400;600;700&display=swap">
+<style>
+/* Layout: one-screen trainer console — target watts + live watts on top, countdown, workout profile strip, controls below. Single dark look for indoor riding. */
+:root{
+  --bg:#0f1214; --panel:#181d20; --line:#2a3236; --fg:#eef2f1; --muted:#8a9a9c; --accent:#f5c518;
+  --z1:#7d8a8f; --z2:#3b8fe0; --z3:#3fbf6a; --z4:#f5c518; --z5:#f08a24; --z6:#e5484d;
+  --ok:#3fbf6a; --low:#3b8fe0; --high:#e5484d;
+  --num:"Big Shoulders Display","Oswald",Impact,sans-serif;
+  --body:"Noto Sans JP","Hiragino Sans",system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px}
+.app{max-width:560px;margin:0 auto;padding:12px 16px 20px;display:flex;flex-direction:column;gap:14px;min-height:100%;box-sizing:border-box}
+header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+header h1{font-family:var(--num);font-weight:800;font-size:26px;letter-spacing:.02em;margin:0}
+header h1 small{font-family:var(--body);font-size:12px;color:var(--muted);font-weight:400;margin-left:6px}
+.ftp{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);letter-spacing:.08em}
+.ftp input{width:64px;background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:6px 8px;font-family:var(--num);font-size:20px;text-align:center}
+.now{background:var(--panel);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:8px;border-top:6px solid var(--zc,var(--z1));transition:border-color .3s}
+.label{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.label b{font-size:16px}
+.label span{font-size:12px;color:var(--muted);letter-spacing:.08em}
+.pw{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end}
+.pw > div{min-width:0}
+.cap{font-size:11px;color:var(--muted);letter-spacing:.12em}
+.watts{font-family:var(--num);font-weight:800;font-size:clamp(64px,19vw,104px);line-height:.9;font-variant-numeric:tabular-nums}
+.watts small{font-size:.32em;color:var(--muted);margin-left:4px}
+#watts{color:var(--zc,var(--fg))}
+.live{color:var(--muted)}
+.live.ok{color:var(--ok)} .live.low{color:var(--low)} .live.high{color:var(--high)}
+.sub{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.clock{font-family:var(--num);font-weight:600;font-size:clamp(52px,16vw,80px);line-height:1;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--zc,var(--fg))}
+.next{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted);padding:0 2px}
+.next b{color:var(--fg);font-weight:600}
+.bt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.bt button{padding:10px 14px;font-size:14px}
+.dev{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%}
+.dev button{min-width:200px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--line);display:inline-block;margin-right:6px}
+.dot.on{background:var(--ok)}
+.erg{display:flex;flex-direction:column;gap:10px;background:var(--panel);border-radius:12px;padding:10px 12px}
+.erg button{padding:10px 12px;font-size:14px;background:var(--bg)}
+.modes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.modes button.on{background:var(--ok);border-color:var(--ok);color:#0f1214}
+.ergrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ergadj{display:flex;align-items:center;gap:6px}
+.ergadj button{font-size:20px;width:52px;padding:8px 0}
+.ergadj span{font-family:var(--num);font-size:26px;min-width:76px;text-align:center;font-variant-numeric:tabular-nums}
+.ergnow{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.msg{font-size:12px;color:var(--muted);line-height:1.6;background:var(--panel);border-radius:8px;padding:10px 12px}
+.profile{position:relative;height:84px;display:flex;align-items:flex-end;gap:1px;background:var(--panel);border-radius:10px;padding:8px 8px 0;overflow:hidden}
+.profile div.seg{flex-shrink:0;border-radius:2px 2px 0 0;opacity:.45}
+.profile div.done{opacity:.2}
+.profile div.cur{opacity:1}
+.cursor{position:absolute;top:0;bottom:0;width:2px;background:var(--fg);left:8px}
+.total{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.total b{font-family:var(--num);font-size:20px;color:var(--fg);font-weight:600}
+.controls{display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;margin-top:auto}
+button{font-family:var(--body);font-weight:700;font-size:15px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:12px;padding:16px 8px;cursor:pointer}
+button.go{background:var(--accent);color:#141414;border-color:var(--accent);font-size:18px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.list{font-size:13px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.list summary{cursor:pointer;color:var(--fg)}
+.list ol{margin:8px 0 0;padding-left:20px;display:grid;gap:3px;font-variant-numeric:tabular-nums}
+.list li.cur{color:var(--accent)}
+.done-msg{text-align:center;font-size:18px;font-weight:700;color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.now{transition:none}}
+</style>
+
+<div class="app">
+  <header>
+    <h1>SST (Med)<small>85分 · TSS 104</small></h1>
+    <label class="ftp" for="ftp">FTP <input id="ftp" type="number" inputmode="numeric" value="268" min="100" max="500"></label>
+  </header>
+
+  <section class="now" id="now">
+    <div class="label"><b id="name">ウォームアップ</b><span id="idx">1 / 23</span></div>
+    <div class="pw">
+      <div><div class="cap">目標</div><div class="watts"><span id="watts">134</span><small>W</small></div></div>
+      <div><div class="cap" id="liveCap">実測 3秒平均</div><div class="watts live" id="liveBox"><span id="live">---</span><small>W</small></div></div>
+    </div>
+    <div class="sub"><span id="pct">50% FTP</span>　<span id="cad"></span></div>
+    <div class="clock" id="clock">10:00</div>
+    <div class="bar"><i id="bar"></i></div>
+  </section>
+
+  <div class="next"><span>次: <b id="next">—</b></span><span id="nextW"></span></div>
+
+  <div class="bt">
+    <div class="dev"><button id="pmBtn" type="button">パワーメーターを接続</button><span><i class="dot" id="pmDot"></i><span id="pmName">未接続</span></span></div>
+    <div class="dev"><button id="trBtn" type="button">スマートトレーナーを接続</button><span><i class="dot" id="trDot"></i><span id="trName">未接続</span></span></div>
+    <button id="soundBtn" type="button">音テスト</button>
+  </div>
+  <div class="msg" id="btMsg" hidden></div>
+
+  <div class="erg" id="ergBox" hidden>
+    <div class="modes" role="radiogroup" aria-label="負荷モード">
+      <button type="button" data-mode="off" class="on">フリー</button>
+      <button type="button" data-mode="erg">ERG</button>
+      <button type="button" data-mode="grade">斜度</button>
+      <button type="button" data-mode="level">レベル</button>
+    </div>
+    <div class="ergrow">
+      <div class="ergadj" id="adj" hidden>
+        <button id="ergMinus" type="button" aria-label="下げる">−</button>
+        <span id="ergVal">0W</span>
+        <button id="ergPlus" type="button" aria-label="上げる">＋</button>
+      </div>
+      <span class="ergnow" id="ergNow">トレーナー負荷なし</span>
+    </div>
+  </div>
+
+  <div class="profile" id="profile"><div class="cursor" id="cursor"></div></div>
+  <div class="total"><span>経過 <b id="elapsed">0:00</b></span><span>残り <b id="remain">85:00</b></span></div>
+
+  <div class="done-msg" id="doneMsg" hidden>完走！お疲れさまでした</div>
+
+  <div class="controls">
+    <button id="back" type="button">◀ 戻る</button>
+    <button id="toggle" class="go" type="button">スタート</button>
+    <button id="skip" type="button">次へ ▶</button>
+  </div>
+
+  <details class="list">
+    <summary>メニュー全体</summary>
+    <ol id="ol"></ol>
+  </details>
+</div>
+
+<script>
+// steps: [name, seconds, startPct, endPct]
+const S=[["ウォームアップ",600,50,75],["ウォームアップ",120,75,75]];
+for(let i=1;i<=3;i++){S.push([`SST前半 ${i}/3 · L4`,300,95,95],[`SST前半 ${i}/3 · L3`,300,86,86]);}
+S.push(["レスト",180,50,50],["VO2 ブースト",60,110,110],["レスト",180,50,50]);
+for(let i=1;i<=3;i++){S.push([`SST後半 ${i}/3 · L4`,300,95,95],[`SST後半 ${i}/3 · L3`,300,86,86]);}
+S.push(["クールダウン",360,70,40]);
+const TOTAL=S.reduce((a,s)=>a+s[1],0);
+const starts=[];{let t=0;for(const s of S){starts.push(t);t+=s[1];}}
+
+const $=id=>document.getElementById(id);
+let ftp=268, elapsed=0, running=false, last=0, cur=-1, wake=null, timer=null, target=0;
+try{const v=+localStorage.getItem("ftp");if(v>=100)ftp=v;}catch(e){}
+$("ftp").value=ftp;
+
+const zone=p=>p<60?"--z1":p<76?"--z2":p<90?"--z3":p<105?"--z4":p<119?"--z5":"--z6";
+const W=p=>Math.round(ftp*p/100);
+const fmt=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");};
+const stepAt=t=>{for(let i=S.length-1;i>=0;i--)if(t>=starts[i])return i;return 0;};
+const label=s=>s[2]===s[3]?`${W(s[2])}W (${s[2]}%)`:`${W(s[2])}→${W(s[3])}W`;
+
+function build(){
+  const pr=$("profile");pr.querySelectorAll(".seg").forEach(n=>n.remove());
+  S.forEach((s)=>{
+    const d=document.createElement("div");d.className="seg";
+    d.style.width=`calc((100% - 16px - ${S.length}px) * ${s[1]/TOTAL})`;
+    const mx=Math.max(s[2],s[3]);d.style.height=(mx/115*100)+"%";
+    d.style.background=`var(${zone(mx)})`;
+    if(s[2]!==s[3]){d.style.clipPath=s[3]>s[2]?`polygon(0 ${100-s[2]/mx*100}%,100% 0,100% 100%,0 100%)`:`polygon(0 0,100% ${100-s[3]/mx*100}%,100% 100%,0 100%)`;}
+    pr.insertBefore(d,$("cursor"));
+  });
+  $("ol").innerHTML=S.map(s=>`<li>${fmt(s[1])}　${s[0]}　${label(s)}</li>`).join("");
+}
+
+/* ---------- Sound ---------- */
+let ac=null, master=null;
+function unlockAudio(){
+  try{
+    if(!ac){
+      ac=new (window.AudioContext||window.webkitAudioContext)();
+      master=ac.createGain();master.gain.value=0.9;master.connect(ac.destination);
+    }
+    if(ac.state!=="running")ac.resume();
+    // play a silent buffer inside the tap so iOS/Safari unlocks output
+    const b=ac.createBuffer(1,1,22050),src=ac.createBufferSource();src.buffer=b;src.connect(ac.destination);src.start(0);
+  }catch(e){}
+}
+function beep(freq=880,dur=0.15,when=0){
+  if(!ac)return;
+  if(ac.state!=="running")ac.resume();
+  const t=ac.currentTime+0.02+when;
+  const o=ac.createOscillator(),g=ac.createGain();
+  o.type="square";o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.linearRampToValueAtTime(0.5,t+0.01);
+  g.gain.setValueAtTime(0.5,t+dur-0.03);
+  g.gain.linearRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+0.02);
+}
+const stepChime=()=>{beep(988,0.18);beep(1319,0.3,0.2);};
+$("soundBtn").onclick=()=>{unlockAudio();stepChime();};
+
+/* ---------- Bluetooth: power meter + smart trainer (separate links) ---------- */
+// Live power/cadence: power meter wins whenever it has sent data in the last 3 s; trainer is the fallback.
+const SRC={
+  pm:{label:"パワメ",samples:[],last:0,cad:null,cadAt:0,crankPrev:null,dev:null},
+  tr:{label:"トレーナー",samples:[],last:0,cad:null,cadAt:0,dev:null}
+};
+let live=null, liveSrc=null, cadence=null;
+function pushPower(k,w){
+  const s=SRC[k],now=performance.now();
+  s.samples.push([now,w]);while(s.samples.length&&now-s.samples[0][0]>3000)s.samples.shift();
+  s.last=now;renderLive();
+}
+function setCad(k,c){SRC[k].cad=c;SRC[k].cadAt=performance.now();}
+function onCPS(e){
+  const s=SRC.pm,v=e.target.value;let f=v.getUint16(0,true),o=2;
+  const p=v.getInt16(o,true);o+=2;
+  if(f&0x01)o+=1; if(f&0x04)o+=2; if(f&0x10)o+=6;
+  if(f&0x20&&v.byteLength>=o+4){
+    const revs=v.getUint16(o,true),tm=v.getUint16(o+2,true),now=performance.now();
+    const cp_=s.crankPrev;
+    if(cp_){
+      const dr=(revs-cp_[0]+65536)%65536,dt=((tm-cp_[1]+65536)%65536)/1024;
+      if(dt>0&&dr>0){setCad("pm",Math.round(dr/dt*60));s.crankPrev=[revs,tm,now];}
+      else if(dr===0&&now-cp_[2]>3000)setCad("pm",0);
+    }else s.crankPrev=[revs,tm,now];
+  }
+  pushPower("pm",p);
+}
+function onFTMS(e){
+  const v=e.target.value;const f=v.getUint16(0,true);let o=2;
+  if(!(f&0x01))o+=2; if(f&0x02)o+=2;
+  if(f&0x04){setCad("tr",Math.round(v.getUint16(o,true)/2));o+=2;}
+  if(f&0x08)o+=2; if(f&0x10)o+=3; if(f&0x20)o+=2;
+  if(f&0x40)pushPower("tr",v.getInt16(o,true));
+}
+function btMsg(t){$("btMsg").hidden=!t;$("btMsg").textContent=t||"";}
+/* ---------- Trainer control (FTMS: ERG / 斜度 / レベル) ---------- */
+let cp=null, hasControl=false, mode="off", sentKey=null, lastSend=0;
+let ergOffset=0, grade=0, levelPct=30, resRange=null;   // resRange: [min,max,inc] in 0.1 units
+let q=Promise.resolve();
+const gattQ=fn=>(q=q.then(fn,fn).catch(e=>{console.warn(e);}));
+async function cpWrite(bytes){
+  if(!cp)return;
+  const d=new Uint8Array(bytes);
+  return gattQ(()=>cp.writeValueWithResponse?cp.writeValueWithResponse(d):cp.writeValue(d));
+}
+const i16=v=>{v=Math.round(v);return [v&0xff,(v>>8)&0xff];};
+async function takeControl(){
+  if(!cp)return false;
+  await cpWrite([0x00]);           // Request Control
+  await cpWrite([0x07]);           // Start / Resume
+  hasControl=true;sentKey=null;return true;
+}
+async function releaseControl(){
+  if(!cp)return;
+  await cpWrite([0x01]);           // Reset → trainer returns to free ride
+  hasControl=false;sentKey=null;
+}
+const ergTarget=()=>Math.max(0,Math.round((target+ergOffset)/5)*5);
+function levelRaw(){
+  const [mn,mx]=resRange||[0,100];
+  return Math.round(mn+(mx-mn)*levelPct/100);
+}
+async function sendLoad(force){
+  if(mode==="off"||!cp)return;
+  if(!hasControl)await takeControl();
+  let key,bytes;
+  if(mode==="erg"){const w=ergTarget();key="e"+w;bytes=[0x05,...i16(w)];}                 // Set Target Power (W)
+  else if(mode==="grade"){key="g"+grade;bytes=[0x11,...i16(0),...i16(grade*100),40,51];}   // Indoor Bike Simulation: wind 0, grade 0.01%, Crr 0.004, CdA 0.51
+  else {const r=levelRaw();key="l"+r;bytes=[0x04,...i16(r)];}                               // Set Target Resistance Level (0.1)
+  const now=performance.now();
+  if(!force&&(key===sentKey||now-lastSend<1000))return;
+  sentKey=key;lastSend=now;
+  await cpWrite(bytes);
+}
+function renderLoad(){
+  $("ergBox").hidden=!cp;
+  document.querySelectorAll(".modes button").forEach(b=>{const on=b.dataset.mode===mode;b.classList.toggle("on",on);b.setAttribute("aria-checked",on);b.setAttribute("role","radio");});
+  $("adj").hidden=mode==="off";
+  if(mode==="erg"){$("ergVal").textContent=(ergOffset>0?"+":"")+ergOffset+"W";$("ergNow").textContent=`メニューに追従 → ${ergTarget()}W`;}
+  else if(mode==="grade"){$("ergVal").textContent=(grade>0?"+":"")+grade.toFixed(1)+"%";$("ergNow").textContent="斜度を手動で設定（ギアで調整）";}
+  else if(mode==="level"){$("ergVal").textContent=levelPct+"%";$("ergNow").textContent="負荷レベルを手動で設定";}
+  else $("ergNow").textContent="トレーナー負荷なし";
+}
+document.querySelectorAll(".modes button").forEach(b=>b.onclick=async()=>{
+  const m=b.dataset.mode;if(m===mode)return;mode=m;renderLoad();
+  if(m==="off")await releaseControl();else await sendLoad(true);
+});
+const STEP={erg:5,grade:0.5,level:5};
+function adjust(dir){
+  if(mode==="erg")ergOffset+=dir*STEP.erg;
+  else if(mode==="grade")grade=Math.max(-10,Math.min(20,+(grade+dir*STEP.grade).toFixed(1)));
+  else if(mode==="level")levelPct=Math.max(0,Math.min(100,levelPct+dir*STEP.level));
+  renderLoad();sendLoad(true);
+}
+$("ergMinus").onclick=()=>adjust(-1);
+$("ergPlus").onclick=()=>adjust(1);
+
+async function connectTrainer(device){
+  const server=await device.gatt.connect();
+  cp=null;hasControl=false;
+  const ftms=await server.getPrimaryService(0x1826);
+  const c=await ftms.getCharacteristic(0x2AD2);c.addEventListener("characteristicvaluechanged",onFTMS);await c.startNotifications();
+  try{
+    cp=await ftms.getCharacteristic(0x2AD9);
+    await cp.startNotifications();   // control point requires indications before writes
+    try{const rr=await (await ftms.getCharacteristic(0x2AD6)).readValue();resRange=[rr.getInt16(0,true),rr.getInt16(2,true)];if(resRange[1]<=resRange[0])resRange=null;}catch(e){resRange=null;}
+    if(mode!=="off"){await takeControl();await sendLoad(true);}
+  }catch(e){cp=null;}
+  renderLoad();
+  return cp?"負荷制御可":"表示のみ";
+}
+async function connectPM(device){
+  const server=await device.gatt.connect();
+  SRC.pm.crankPrev=null;
+  const s=await server.getPrimaryService(0x1818);const c=await s.getCharacteristic(0x2A63);
+  c.addEventListener("characteristicvaluechanged",onCPS);await c.startNotifications();
+  return "";
+}
+const LINK={
+  pm:{btn:"pmBtn",dot:"pmDot",name:"pmName",title:"パワーメーター",service:0x1818,connect:connectPM},
+  tr:{btn:"trBtn",dot:"trDot",name:"trName",title:"スマートトレーナー",service:0x1826,connect:connectTrainer}
+};
+function setLink(k,state,extra){
+  const L=LINK[k],d=SRC[k].dev;
+  $(L.dot).classList.toggle("on",state==="on");
+  $(L.btn).textContent=state==="on"?`${L.title}を切断`:`${L.title}を接続`;
+  $(L.name).textContent=state==="on"?`${d?.name||"接続済み"}${extra?"（"+extra+"）":""}`:state==="wait"?"接続中…":state==="retry"?"再接続中…":state==="lost"?"切断されました":"未接続";
+}
+async function linkDevice(k){
+  unlockAudio();
+  const L=LINK[k],S_=SRC[k];
+  if(S_.dev&&S_.dev.gatt.connected){            // second tap = disconnect
+    S_.manual=true;
+    if(k==="tr"&&mode!=="off"){try{await releaseControl();}catch(e){}}
+    S_.dev.gatt.disconnect();S_.dev=null;if(k==="tr"){cp=null;renderLoad();}setLink(k,"off");return;
+  }
+  if(!navigator.bluetooth){btMsg("このブラウザはBluetooth接続に対応していません。PC・AndroidのChrome / Edge、iPhoneならBluefyアプリでダウンロード版のHTMLを開いてください。");return;}
+  try{
+    const dev=await navigator.bluetooth.requestDevice({filters:[{services:[L.service]}],optionalServices:[0x1818,0x1826]});
+    if(SRC[k==="pm"?"tr":"pm"].dev?.id===dev.id){btMsg(`同じ機器が${k==="pm"?"トレーナー":"パワーメーター"}側で接続済みです。別の機器を選んでください。`);return;}
+    S_.dev=dev;S_.manual=false;setLink(k,"wait");
+    const extra=await L.connect(dev);
+    setLink(k,"on",extra);btMsg("");
+    dev.addEventListener("gattserverdisconnected",async()=>{
+      if(S_.manual||S_.dev!==dev)return;
+      if(k==="tr"){cp=null;hasControl=false;renderLoad();}
+      setLink(k,"retry");
+      for(let i=0;i<5;i++){
+        try{await new Promise(r=>setTimeout(r,1500));if(S_.dev!==dev)return;const x=await L.connect(dev);setLink(k,"on",x);return;}catch(e){}
+      }
+      setLink(k,"lost");
+    });
+  }catch(e){
+    S_.dev=null;setLink(k,"off");
+    if(e.name==="NotFoundError"&&/cancel/i.test(e.message))return;
+    if(e.name==="SecurityError"||/permission|policy|disallowed/i.test(e.message))btMsg("このページ内ではBluetoothが使えません。ダウンロード版のHTMLファイルをChromeで開くと接続できます。");
+    else btMsg(`${L.title}に接続できませんでした：${e.message}（Zwiftなど他のアプリと接続中だと使えないことがあります）`);
+  }
+}
+$("pmBtn").onclick=()=>linkDevice("pm");
+$("trBtn").onclick=()=>linkDevice("tr");
+function avg(s){return s.samples.length?Math.round(s.samples.reduce((a,x)=>a+x[1],0)/s.samples.length):null;}
+function renderLive(){
+  const now=performance.now();
+  const pmFresh=now-SRC.pm.last<3000, trFresh=now-SRC.tr.last<3000;
+  liveSrc=pmFresh?"pm":trFresh?"tr":null;
+  live=liveSrc?avg(SRC[liveSrc]):null;
+  const cadSrc=(SRC.pm.cad!==null&&now-SRC.pm.cadAt<4000)?"pm":(SRC.tr.cad!==null&&now-SRC.tr.cadAt<4000)?"tr":null;
+  cadence=cadSrc?SRC[cadSrc].cad:null;
+  $("live").textContent=live===null?"---":live;
+  $("liveCap").textContent="実測 3秒平均"+(liveSrc?" · "+SRC[liveSrc].label:"");
+  const b=$("liveBox");b.className="watts live";
+  if(live!==null&&target){const r=live/target;b.classList.add(r<0.95?"low":r>1.05?"high":"ok");}
+  $("cad").textContent=cadence!==null?`ケイデンス ${cadence} rpm`:"";
+}
+
+/* ---------- Timer ---------- */
+let lastCount=-1;
+function render(){
+  const i=stepAt(Math.min(elapsed,TOTAL-0.001)), s=S[i], into=elapsed-starts[i], left=s[1]-into;
+  const p=s[2]+(s[3]-s[2])*Math.min(1,into/s[1]);
+  const pr=Math.round(p); target=W(p);
+  $("now").style.setProperty("--zc",`var(${zone(pr)})`);
+  $("name").textContent=s[0];
+  $("idx").textContent=`${i+1} / ${S.length}`;
+  $("watts").textContent=target;
+  $("pct").textContent=s[2]===s[3]?`${s[2]}% FTP`:`${pr}% FTP（${s[2]}→${s[3]}%）`;
+  $("clock").textContent=fmt(left);
+  $("bar").style.width=(into/s[1]*100)+"%";
+  const n=S[i+1];$("next").textContent=n?n[0]:"終了";$("nextW").textContent=n?label(n):"";
+  $("elapsed").textContent=fmt(elapsed);$("remain").textContent=fmt(TOTAL-elapsed);
+  $("cursor").style.left=`calc(8px + (100% - 16px) * ${elapsed/TOTAL})`;
+  if(i!==cur){
+    document.querySelectorAll(".seg").forEach((d,k)=>d.className="seg"+(k<i?" done":k===i?" cur":""));
+    document.querySelectorAll("#ol li").forEach((d,k)=>d.className=k===i?"cur":"");
+    if(cur!==-1&&running)stepChime();
+    cur=i;
+  }
+  const c=Math.ceil(left);
+  if(running&&c<=3&&c>=1&&c!==lastCount)beep(880,0.12);
+  lastCount=c;
+  renderLive();
+  if(mode==="erg"&&cp){renderLoad();sendLoad(false);}
+}
+function tick(){
+  if(!running)return;
+  const now=performance.now();elapsed+=(now-last)/1000;last=now;
+  if(elapsed>=TOTAL){elapsed=TOTAL;render();stop();$("doneMsg").hidden=false;$("toggle").textContent="リセット";beep(660,0.6);return;}
+  render();
+}
+async function start(){
+  unlockAudio();
+  if(elapsed>=TOTAL){elapsed=0;cur=-1;$("doneMsg").hidden=true;}
+  try{wake=await navigator.wakeLock?.request("screen");}catch(e){}
+  running=true;last=performance.now();$("toggle").textContent="一時停止";
+  clearInterval(timer);timer=setInterval(tick,200);
+}
+function stop(){running=false;clearInterval(timer);$("toggle").textContent="再開";try{wake?.release();}catch(e){}wake=null;}
+$("toggle").onclick=()=>running?stop():start();
+$("skip").onclick=()=>{unlockAudio();const i=stepAt(elapsed);elapsed=i+1<S.length?starts[i+1]:TOTAL-0.5;render();};
+$("back").onclick=()=>{unlockAudio();const i=stepAt(elapsed);elapsed=(elapsed-starts[i]>3||i===0)?starts[i]:starts[i-1];render();};
+$("ftp").oninput=e=>{const v=+e.target.value;if(v>=100&&v<=500){ftp=v;try{localStorage.setItem("ftp",v);}catch(e){}build();cur=-1;render();}};
+document.addEventListener("visibilitychange",async()=>{if(document.visibilityState==="visible"){if(ac&&ac.state!=="running")ac.resume();if(running){try{wake=await navigator.wakeLock?.request("screen");}catch(e){}}}});
+setInterval(renderLive,1000);
+build();render();
+</script>
+
+</body></html>
