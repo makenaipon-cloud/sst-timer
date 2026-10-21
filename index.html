@@ -33,6 +33,13 @@ header h1 small{font-family:var(--body);font-size:12px;color:var(--muted);font-w
 #watts{color:var(--zc,var(--fg))}
 .live{color:var(--muted)}
 .live.ok{color:var(--ok)} .live.low{color:var(--low)} .live.high{color:var(--high)}
+.laps{display:grid;grid-template-columns:1fr 1fr;gap:12px;border-top:1px solid var(--line);padding-top:8px}
+.laps > div{display:flex;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}
+.laps b{font-family:var(--num);font-weight:800;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+.laps small{color:var(--muted);font-size:12px}
+.laps .cap{width:100%}
+.laps b.ok{color:var(--ok)} .laps b.low{color:var(--low)} .laps b.high{color:var(--high)}
+.prevTgt{font-size:12px;color:var(--muted)}
 .sub{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
 .clock{font-family:var(--num);font-weight:600;font-size:clamp(52px,16vw,80px);line-height:1;font-variant-numeric:tabular-nums}
 .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
@@ -89,11 +96,18 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
       <div><div class="cap" id="liveCap">実測 3秒平均</div><div class="watts live" id="liveBox"><span id="live">---</span><small>W</small></div></div>
     </div>
     <div class="sub"><span id="pct">50% FTP</span>　<span id="cad"></span></div>
+    <div class="laps">
+      <div><span class="cap">ラップ平均</span><b id="lapAvg">---</b><small>W</small></div>
+      <div><span class="cap">前ラップ</span><b id="prevLap">---</b><small>W</small><span class="prevTgt" id="prevTgt"></span></div>
+    </div>
     <div class="clock" id="clock">10:00</div>
     <div class="bar"><i id="bar"></i></div>
   </section>
 
   <div class="next"><span>次: <b id="next">—</b></span><span id="nextW"></span></div>
+
+  <div class="profile" id="profile"><div class="cursor" id="cursor"></div></div>
+  <div class="total"><span>経過 <b id="elapsed">0:00</b></span><span>残り <b id="remain">85:00</b></span></div>
 
   <div class="bt">
     <div class="dev"><button id="pmBtn" type="button">パワーメーターを接続</button><span><i class="dot" id="pmDot"></i><span id="pmName">未接続</span></span></div>
@@ -120,8 +134,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     </div>
   </div>
 
-  <div class="profile" id="profile"><div class="cursor" id="cursor"></div></div>
-  <div class="total"><span>経過 <b id="elapsed">0:00</b></span><span>残り <b id="remain">85:00</b></span></div>
 
   <div class="done-msg" id="doneMsg" hidden>完走！お疲れさまでした</div>
 
@@ -210,7 +222,7 @@ let live=null, liveSrc=null, cadence=null;
 function pushPower(k,w){
   const s=SRC[k],now=performance.now();
   s.samples.push([now,w]);while(s.samples.length&&now-s.samples[0][0]>3000)s.samples.shift();
-  s.last=now;renderLive();
+  s.last=now;s.inst=w;renderLive();
 }
 function setCad(k,c){SRC[k].cad=c;SRC[k].cadAt=performance.now();}
 function onCPS(e){
@@ -404,17 +416,27 @@ function render(){
     document.querySelectorAll(".seg").forEach((d,k)=>d.className="seg"+(k<i?" done":k===i?" cur":""));
     document.querySelectorAll("#ol li").forEach((d,k)=>d.className=k===i?"cur":"");
     if(cur!==-1&&running)stepChime();
+    if(cur!==-1){if(lapT>=5){prevLapW=Math.round(lapE/lapT);prevLapTgt=Math.round(lapTgtE/lapT);}lapE=lapT=lapTgtE=0;}
     cur=i;
   }
   const c=Math.ceil(left);
   if(running&&c<=3&&c>=1&&c!==lastCount)beep(880,0.12);
   lastCount=c;
-  renderLive();
+  renderLive();renderLap();
   if(mode==="erg"&&cp){renderLoad();sendLoad(false);}
+}
+let lapE=0,lapT=0,lapTgtE=0,prevLapW=null,prevLapTgt=null;
+function lapClass(w,t){if(w===null||!t)return "";const r=w/t;return r<0.95?"low":r>1.05?"high":"ok";}
+function renderLap(){
+  const a=lapT>0?Math.round(lapE/lapT):null, tg=lapT>0?Math.round(lapTgtE/lapT):target;
+  $("lapAvg").textContent=a===null?"---":a;$("lapAvg").className=lapClass(a,tg);
+  $("prevLap").textContent=prevLapW===null?"---":prevLapW;$("prevLap").className=lapClass(prevLapW,prevLapTgt);
+  $("prevTgt").textContent=prevLapTgt?`目標 ${prevLapTgt}W`:"";
 }
 function tick(){
   if(!running)return;
-  const now=performance.now();elapsed+=(now-last)/1000;last=now;
+  const now=performance.now(),dt=(now-last)/1000;elapsed+=dt;last=now;
+  if(liveSrc&&SRC[liveSrc].inst!=null&&dt<2){lapE+=SRC[liveSrc].inst*dt;lapT+=dt;lapTgtE+=target*dt;}
   if(elapsed>=TOTAL){elapsed=TOTAL;render();stop();$("doneMsg").hidden=false;$("toggle").textContent="リセット";beep(660,0.6);return;}
   render();
 }
