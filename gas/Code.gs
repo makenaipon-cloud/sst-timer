@@ -206,3 +206,13 @@ function b64url_(x) {
   const bytes = typeof x === 'string' ? Utilities.newBlob(x).getBytes() : x;
   return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
 }
+
+/* ---------------- setup helper ----------------
+ * エディタ上部の関数メニューで makeToken を選んで「実行」すると、
+ * BRIDGE_TOKEN を自動で作ってスクリプト プロパティに保存し、実行ログに表示します。
+ */
+function makeToken() {
+  const t = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  PropertiesService.getScriptProperties().setProperty('BRIDGE_TOKEN', t);
+  Logger.log('BRIDGE_TOKEN = ' + t);
+}
