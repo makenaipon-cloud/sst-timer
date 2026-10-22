@@ -206,13 +206,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
       <button type="button" data-f="l">66分〜</button>
       <button type="button" data-f="td">TrainerRoad</button>
     </div>
-    <div class="pkcount"><span id="pkCount"></span><button type="button" class="glink" id="gSetBtn">Garmin連携の設定</button></div>
+    <div class="pkcount"><span id="pkCount"></span><button type="button" class="glink" id="gSetBtn">Garmin送信の設定</button></div>
     <div class="gset" id="gSet" hidden>
+      <span>intervals.icu経由でGarmin Connectに送ります。</span>
       <label for="gUrl">中継サーバー（GAS）のURL</label>
       <input id="gUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
       <label for="gTok">連携トークン（BRIDGE_TOKEN）</label>
       <input id="gTok" type="password" autocomplete="off">
-      <div class="grow"><button id="gSave" type="button">保存して接続テスト</button><button id="gAuth" type="button">Garminと連携する</button></div>
+      <div class="grow"><button id="gSave" type="button">保存して接続テスト</button></div>
       <p class="gmsg" id="gSetMsg"></p>
     </div>
     <ul class="pklist" id="pkList"></ul>
@@ -642,7 +643,7 @@ function openDetail(w){
   $("dtSum").textContent=summary(w);
   $("dtSteps").innerHTML=groupSteps(w.steps).map(g=>g.n>1?`<li><span class="rep">${g.n}回</span>　${g.items.map(stepText).join(" → ")}</li>`:`<li>${stepText(g.items[0])}</li>`).join("");
   $("dtLink").href=w.url;$("dtLink").textContent=w.src==="td"?"元データの記事を読む ↗（TACLIMB：TrainerRoadメニューのZwift版）":"すくみずログの解説記事を読む ↗";
-  gMsg("gMsg",G.url?`今のFTP（${ftp}W）でワット数に変換して送ります。`:"使うには、選択画面の「Garmin連携の設定」で中継サーバーを登録してください。");
+  gMsg("gMsg",G.url?`今のFTP（${ftp}W）でワット数に変換して送ります。`:"使うには、選択画面の「Garmin送信の設定」で中継サーバーを登録してください。");
   $("detail").hidden=false;$("detail").scrollTop=0;
 }
 $("dtBack").onclick=()=>{$("detail").hidden=true;};
@@ -695,7 +696,7 @@ try{G.url=localStorage.getItem("gUrl")||"";G.tok=localStorage.getItem("gTok")||"
 $("gUrl").value=G.url;$("gTok").value=G.tok;
 const gMsg=(id,t,cls)=>{const el=$(id);el.textContent=t;el.className="gmsg"+(cls?" "+cls:"");};
 async function gCall(body){
-  if(!G.url||!G.tok)throw new Error("先に選択画面の「Garmin連携の設定」でURLとトークンを入れてください");
+  if(!G.url||!G.tok)throw new Error("先に選択画面の「Garmin送信の設定」でURLとトークンを入れてください");
   const r=await fetch(G.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({...body,token:G.tok})});
   const j=await r.json(); if(!j.ok)throw new Error(j.error||"失敗しました"); return j;
 }
@@ -704,21 +705,15 @@ $("gSave").onclick=async()=>{
   G.url=$("gUrl").value.trim();G.tok=$("gTok").value.trim();
   try{localStorage.setItem("gUrl",G.url);localStorage.setItem("gTok",G.tok);}catch(e){}
   gMsg("gSetMsg","接続を確認中…");
-  try{const j=await gCall({action:"status"});gMsg("gSetMsg",j.connected?"接続OK。Garminとも連携済みです。":"中継サーバーにはつながりました。次に「Garminと連携する」を押してください。",j.connected?"ok":"");}
+  try{const j=await gCall({action:"status"});gMsg("gSetMsg",`接続OK（intervals.icu：${j.athlete}${j.icuFtp?`／intervals.icuのFTP ${j.icuFtp}W`:""}）。`+(j.icuFtp&&j.icuFtp!==ftp?` タイマーのFTP（${ftp}W）と違いますが、送るワット数はタイマーのFTPで計算します。`:""),"ok");}
   catch(e){gMsg("gSetMsg","接続できませんでした："+e.message,"err");}
-};
-$("gAuth").onclick=()=>{
-  G.url=$("gUrl").value.trim();G.tok=$("gTok").value.trim();
-  if(!G.url||!G.tok){gMsg("gSetMsg","URLとトークンを入れてください","err");return;}
-  gMsg("gSetMsg","開いたページの「Garminにログインして連携する」を押し、終わったら「保存して接続テスト」で確認してください。");
-  const a=document.createElement("a");a.href=G.url+"?action=auth&token="+encodeURIComponent(G.tok);a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove();
 };
 $("gPush").onclick=async()=>{
   const w=dtW;if(!w)return;
   const d=new Date(),date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
   $("gPush").disabled=true;gMsg("gMsg","送信中…");
   try{const j=await gCall({action:"push",ftp,date,workout:{name:w.name,steps:w.steps}});
-    gMsg("gMsg",`送りました（FTP ${ftp}W・${j.steps}ステップ）。Garmin Connectのカレンダー今日の欄に入ります。Edgeを同期すると表示されます。`,"ok");}
+    gMsg("gMsg",`intervals.icuの今日の予定に入れました（FTP ${ftp}W）。数分でGarmin Connectのカレンダーに同期されるので、そのあとEdgeを同期してください。`,"ok");}
   catch(e){gMsg("gMsg","送れませんでした："+e.message,"err");}
   $("gPush").disabled=false;
 };
