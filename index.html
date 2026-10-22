@@ -592,7 +592,8 @@ function summary(w){
   const hard=z[3]+z[4]+z[5];
   const main=ZN.map((n,i)=>[n[0],z[i]]).filter((x,i)=>i>=2).sort((a,b)=>b[1]-a[1])[0];
   const g=groupSteps(w.steps).filter(x=>x.n>1&&x.items.some(st=>{const p=stPct(st);return p&&Math.max(...p)>=90;}));
-  let s=`合計${Math.round(tot/60)}分のうち、閾値以上（FTPの90%〜）で踏むのは約${Math.round(hard/60)}分。`;
+  let s=hard>=60?`合計${Math.round(tot/60)}分のうち、閾値以上（FTPの90%〜）で踏むのは約${Math.round(hard/60)}分。`:`合計${Math.round(tot/60)}分。閾値以上（FTPの90%〜）の区間はほぼありません。`;
+  if(w.steps.every(st=>st[1]==null))return `合計${Math.round(tot/60)}分のフリーライドです。強度は自由に決めてください。`;
   if(main&&main[1]>0)s+=`いちばん長いのは「${main[0]}」の約${Math.round(main[1]/60)}分です。`;
   if(g.length){const x=g.sort((a,b)=>b.n*b.items.length-a.n*a.items.length)[0];s+=`中心になるのは「${x.items.map(stepText).join(" ＋ ")}」を${x.n}回繰り返すセット。`;}
   const peak=Math.max(...w.steps.map(st=>{const p=stPct(st);return p?Math.max(...p):0;}));
