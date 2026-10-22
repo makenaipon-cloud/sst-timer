@@ -696,9 +696,12 @@ try{G.url=localStorage.getItem("gUrl")||"";G.tok=localStorage.getItem("gTok")||"
 $("gUrl").value=G.url;$("gTok").value=G.tok;
 const gMsg=(id,t,cls)=>{const el=$(id);el.textContent=t;el.className="gmsg"+(cls?" "+cls:"");};
 async function gCall(body){
+  if(!/github\.io$|^localhost$|^$/.test(location.hostname))throw new Error("このページからは外部へ送信できません。https://makenaipon-cloud.github.io/sst-timer/ を開いて使ってください");
   if(!G.url||!G.tok)throw new Error("先に選択画面の「Garmin送信の設定」でURLとトークンを入れてください");
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(G.url))throw new Error("GASのURLは https://script.google.com/macros/s/…/exec の形で入れてください（/dev ではなく /exec）");
   const r=await fetch(G.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({...body,token:G.tok})});
-  const j=await r.json(); if(!j.ok)throw new Error(j.error||"失敗しました"); return j;
+  const t=await r.text(); let j; try{j=JSON.parse(t);}catch(e){throw new Error("中継サーバーの応答が読めません。GASのデプロイ設定（実行ユーザー：自分／アクセス：全員）を確認してください");}
+  if(!j.ok)throw new Error(j.error||"失敗しました"); return j;
 }
 $("gSetBtn").onclick=()=>{$("gSet").hidden=!$("gSet").hidden;};
 $("gSave").onclick=async()=>{
@@ -706,7 +709,7 @@ $("gSave").onclick=async()=>{
   try{localStorage.setItem("gUrl",G.url);localStorage.setItem("gTok",G.tok);}catch(e){}
   gMsg("gSetMsg","接続を確認中…");
   try{const j=await gCall({action:"status"});gMsg("gSetMsg",`接続OK（intervals.icu：${j.athlete}${j.icuFtp?`／intervals.icuのFTP ${j.icuFtp}W`:""}）。`+(j.icuFtp&&j.icuFtp!==ftp?` タイマーのFTP（${ftp}W）と違いますが、送るワット数はタイマーのFTPで計算します。`:""),"ok");}
-  catch(e){gMsg("gSetMsg","接続できませんでした："+e.message,"err");}
+  catch(e){gMsg("gSetMsg","接続できませんでした："+(e.message==="Failed to fetch"?"GASに届きませんでした。GASのURLをシークレットウィンドウで開いて、ログインなしで「bridge is running」と出るか確認してください（出ない場合はデプロイのアクセスを「全員」に）":e.message),"err");}
 };
 $("gPush").onclick=async()=>{
   const w=dtW;if(!w)return;
