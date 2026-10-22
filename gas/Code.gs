@@ -137,3 +137,15 @@ function testIcu() {
   const me = icu_('get', '');
   Logger.log('intervals.icu: ' + (me.name || me.id) + ' / FTP ' + ftpOf_(me));
 }
+
+/* iPhoneでの入力を省くための「設定リンク」を作る。
+ * 先にウェブアプリとしてデプロイしてから、関数メニューで setupLink を選んで「実行」。
+ * 実行ログのリンクを iPhone に送り（メモやLINEで自分宛てに）、Bluefy のアドレス欄に貼って開くと設定が入ります。 */
+function setupLink() {
+  const u = ScriptApp.getService().getUrl();
+  const t = prop_('BRIDGE_TOKEN');
+  if (!u) throw new Error('先にウェブアプリとしてデプロイしてください');
+  if (!t) throw new Error('先に makeToken を実行してください');
+  const b = Utilities.base64EncodeWebSafe(JSON.stringify({ u: u, t: t })).replace(/=+$/, '');
+  Logger.log('設定リンク: https://makenaipon-cloud.github.io/sst-timer/#setup=' + b);
+}

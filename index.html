@@ -55,8 +55,12 @@ header{display:flex;justify-content:space-between;align-items:center;gap:12px;fl
 .pkfilter button.on{background:var(--accent);border-color:var(--accent);color:#141414}
 .pkcount{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .glink{background:none;border:0;padding:4px 0;color:var(--accent);font-size:12px;font-weight:600;text-decoration:underline}
-.gset{display:grid;gap:6px;background:var(--panel);border-radius:10px;padding:12px;font-size:12px;color:var(--muted)}
-.gset input{background:var(--bg);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:10px;font-size:14px;min-width:0}
+.gsheet{position:fixed;inset:0;z-index:30;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:8px;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 40vh;box-sizing:border-box;font-size:13px;color:var(--muted)}
+.gshead{display:flex;justify-content:space-between;align-items:center;color:var(--fg);font-size:16px}
+.gshead button{padding:8px 12px;font-size:13px}
+.gnote{margin:0 0 6px;line-height:1.6}
+.gsheet input{background:var(--panel);border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:12px;font-size:16px;min-width:0;width:100%;box-sizing:border-box}
+.gsmall{align-self:flex-start;padding:6px 10px;font-size:12px}
 .grow{display:flex;gap:8px;flex-wrap:wrap}
 .grow button{padding:10px 12px;font-size:13px}
 .gmsg{margin:0;font-size:12px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
@@ -207,15 +211,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
       <button type="button" data-f="td">TrainerRoad</button>
     </div>
     <div class="pkcount"><span id="pkCount"></span><button type="button" class="glink" id="gSetBtn">Garmin送信の設定</button></div>
-    <div class="gset" id="gSet" hidden>
-      <span>intervals.icu経由でGarmin Connectに送ります。</span>
-      <label for="gUrl">中継サーバー（GAS）のURL</label>
-      <input id="gUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
-      <label for="gTok">連携トークン（BRIDGE_TOKEN）</label>
-      <input id="gTok" type="password" autocomplete="off">
-      <div class="grow"><button id="gSave" type="button">保存して接続テスト</button></div>
-      <p class="gmsg" id="gSetMsg"></p>
-    </div>
     <ul class="pklist" id="pkList"></ul>
     <div class="detail" id="detail" hidden>
       <button id="dtBack" type="button" class="dtback">← 一覧に戻る</button>
@@ -243,6 +238,19 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
       <div class="dtgo"><button id="dtGo" type="button" class="go">これをやる</button></div>
     </div>
   </section>
+
+    <section class="gsheet" id="gSet" hidden aria-label="Garmin送信の設定">
+      <div class="gshead"><b>Garmin送信の設定</b><button id="gClose" type="button">閉じる</button></div>
+      <p class="gnote">intervals.icu経由でGarmin Connectに送ります。GASで <code>setupLink</code> を実行して出た「設定リンク」を開けば、下の2つは自動で入ります。</p>
+      <label for="gUrl">中継サーバー（GAS）のURL</label>
+      <input id="gUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button id="gPasteUrl" type="button" class="gsmall">クリップボードから貼り付け</button>
+      <label for="gTok">連携トークン（BRIDGE_TOKEN）</label>
+      <input id="gTok" type="text" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button id="gPasteTok" type="button" class="gsmall">クリップボードから貼り付け</button>
+      <div class="grow"><button id="gSave" type="button">保存して接続テスト</button></div>
+      <p class="gmsg" id="gSetMsg"></p>
+    </section>
 
   <details class="list">
     <summary>メニュー全体</summary>
@@ -703,7 +711,16 @@ async function gCall(body){
   const t=await r.text(); let j; try{j=JSON.parse(t);}catch(e){throw new Error("中継サーバーの応答が読めません。GASのデプロイ設定（実行ユーザー：自分／アクセス：全員）を確認してください");}
   if(!j.ok)throw new Error(j.error||"失敗しました"); return j;
 }
-$("gSetBtn").onclick=()=>{$("gSet").hidden=!$("gSet").hidden;};
+$("gSetBtn").onclick=()=>{$("gSet").hidden=false;$("gSet").scrollTop=0;};
+$("gClose").onclick=()=>{$("gSet").hidden=true;};
+async function pasteInto(id){try{const t=(await navigator.clipboard.readText()).trim();if(t){$(id).value=t;gMsg("gSetMsg","貼り付けました。");}}catch(e){gMsg("gSetMsg","貼り付けできませんでした。入力欄を長押しして「ペースト」を選ぶか、GASの「設定リンク」を使ってください。","err");}}
+$("gPasteUrl").onclick=()=>pasteInto("gUrl");
+$("gPasteTok").onclick=()=>pasteInto("gTok");
+// one-tap setup: #setup=<base64(JSON{u,t})>
+(()=>{const m=location.hash.match(/^#setup=([A-Za-z0-9_\-]+)/);if(!m)return;
+  try{const j=JSON.parse(atob(m[1].replace(/-/g,"+").replace(/_/g,"/")));if(j.u&&j.t){G.url=j.u;G.tok=j.t;localStorage.setItem("gUrl",G.url);localStorage.setItem("gTok",G.tok);$("gUrl").value=G.url;$("gTok").value=G.tok;
+    setTimeout(()=>{$("gSet").hidden=false;gMsg("gSetMsg","設定リンクからURLとトークンを読み込みました。「保存して接続テスト」で確認してください。","ok");},300);}}catch(e){}
+  history.replaceState(null,"",location.pathname);})();
 $("gSave").onclick=async()=>{
   G.url=$("gUrl").value.trim();G.tok=$("gTok").value.trim();
   try{localStorage.setItem("gUrl",G.url);localStorage.setItem("gTok",G.tok);}catch(e){}
